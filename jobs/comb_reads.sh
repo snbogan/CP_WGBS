@@ -21,7 +21,7 @@ for sample in $(ls *.fq.gz | awk -F'_' '{print $1"_"$2}' | sort | uniq); do
     echo "Processing sample: $sample"
 
     # Combine forward reads (_1.trimmed.fq.gz)
-    cat ${sample}*_L*_1.trimmed.fq.gz > /hb/home/snbogan/WGBS/CrossPhox_WGBS/combined_reads/${sample}_1.combined.fq.gz
+    cat ${sample}*_L*_1.trimmed.fq.gz > /hb/home/snbogan/WGBS/CrossPhox_WGBS/combined_trimmed_reads/${sample}_1.combined.fq.gz
 
     # Combine reverse reads (_2.trimmed.fq.gz)
     cat ${sample}*_L*_2.trimmed.fq.gz > /hb/home/snbogan/WGBS/CrossPhox_WGBS/combined_trimmed_reads/${sample}_2.combined.fq.gz
