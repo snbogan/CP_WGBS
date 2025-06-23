@@ -1,0 +1,287 @@
+---
+title: "June '25 Cross pHox WGBS update"
+author: "Sam Bogan"
+date: "2025-06-23"
+output: github_document
+---
+
+```{r setup, include=FALSE, message=FALSE, warning=FALSE, results='hide'}
+knitr::opts_chunk$set(root.dir = '~/Documents/GitHub/CP_WGBS/')
+
+library(tidyverse)
+
+```
+
+## Updates
+
+I've finally gotten around to working up the Cross pHox WGBS data. We have 78 libraries from 78 cultures. I've looked across the literature and, to my knowledge, this is the largest single WGBS data set for plants and animals in terms of samples per species (excluding humans). We have RNA-seq data for 76/78 WGBS samples. When planning our sequencing, we targeted an average coverage of 10x. Our mean coverage was 12.85x (yay!) with a minimum of 5.27x and a max of 53.93x. That high coverage sample is probably result of unequal loading by Novogene (Fig. 1). Bisulfite conversion was very effective with a mean coversion rate of 99.68% and a minimum of 99.54%.
+
+I ran alignment and methylation calling according to this workflow by Steve Roberts and Yaamini Venkataraman on our MarineOmics site: https://marineomics.github.io/FUN_02_DNA_methylation.html.  
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+
+# Read in summary
+summary_df <- read.csv("01_diff_meth/CpG_coverage_methylation_summary.csv")
+
+# Plot CpG coverage across F0 x F1 treatments
+cpg_cov_p <- ggplot(data = summary_df,
+                    aes(y = mean_coverage, x = F1_treat, 
+                        group = F0_treat, color = F0_treat, fill = F0_treat)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  theme_classic() +
+  labs(x = "Developmental treatment", 
+       color = "Parental treatment",
+       fill = "Parental treatment",
+       y = "Mean CpG coverage")
+
+
+# Mean and SD of genome cov
+mean(summary_df$mean_coverage) # 5.983117
+sd(summary_df$mean_coverage) # 1.294539
+min(summary_df$mean_coverage) # 2.65
+max(summary_df$mean_coverage) # 8.82
+
+# Was coverage varying according to an interaction? No, but greater under dev upwelling 
+cpg_cov_glm <- glm(mean_methylation_percent/100 ~ F0_treat + F1_treat + F0_treat:F1_treat,
+                    data = summary_df)
+
+cpg_cov_anova <- anova(cpg_cov_glm, test = "F")
+
+# Plot CpG % methylation across F0 x F1 treatments
+cpg_meth_p <- ggplot(data = summary_df,
+                    aes(y = mean_methylation_percent, x = F1_treat, 
+                        group = F0_treat, color = F0_treat, fill = F0_treat)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  theme_classic() +
+  labs(x = "Developmental treatment", 
+       color = "Parental treatment",
+       fill = "Parental treatment",
+       y = "Mean CpG % methylation")
+
+# Was % methylation greater under developmental upwelling? 
+# Yes, meth significantly increased under developmental upwelling by 0.25%
+summary_df$logit_meth <- log((summary_df$mean_methylation_percent/100 + 0.000001) /
+                                             (1-(summary_df$mean_methylation_percent/100 + 0.000001)))
+
+cpg_meth_glm <- glm(logit_meth ~ F0_treat + F1_treat,
+                    data = summary_df)
+
+cpg_meth_anova <- anova(cpg_meth_glm, test = "F")
+
+library(Rmisc)
+
+summarySE(measurevar = "mean_methylation_percent",
+          groupvars = "F1_treat",
+          data = summary_df)
+
+23.61975 - 23.36500
+
+# Read in WGBS library and seq report
+seq_df <- read.csv("~/Documents/GitHub/CP_WGBS/src/tables/qc.summary.csv")
+
+## Sum bases and average BS conversion rate
+seq_df$Sample <- as.factor(seq_df$Sample)
+
+# Summarize by Sample
+seq_sum_df <- aggregate(cbind(Raw.data, BS.conversion.rate...) ~ Sample, 
+                        data = seq_df, 
+                        FUN = function(x) c(sum = sum(x), mean = mean(x)))
+
+# Clean up the output (optional)
+seq_sum_df$Raw_data_sum <- seq_sum_df$Raw.data[, "sum"]
+seq_sum_df$BS_conversion_rate_mean <- seq_sum_df$BS.conversion.rate...[, "mean"]
+
+# Keep only the relevant columns
+seq_sum_df <- seq_sum_df[, c("Sample", "Raw_data_sum", "BS_conversion_rate_mean")]
+
+# Merge with meth summary
+summary_df <- merge(summary_df,
+                    seq_sum_df,
+                    by.x = "sample_id",
+                    by.y = "Sample") # Issue with merging U22_U2 - look into this
+
+# Plot coverage divided by genome size
+summary_df$genome_cov <- summary_df$Raw_data_sum / 9.218e+8
+
+# Mean and SD of genome cov
+# mean(summary_df$genome_cov) # 12.85432
+# sd(summary_df$genome_cov) # 5.593113
+# min(summary_df$genome_cov) # 5.273766
+# max(summary_df$genome_cov) # 53.93437
+
+cpg_gcov_p <- ggplot(data = summary_df,
+                    aes(y = genome_cov, x = F1_treat, 
+                        group = F0_treat, color = F0_treat, fill = F0_treat)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  theme_classic() +
+  labs(x = "Developmental treatment", 
+       color = "Parental treatment",
+       fill = "Parental treatment",
+       y = "WGBS genome coverage")
+
+# BS conversion
+# mean(summary_df$BS_conversion_rate_mean) # 99.67591
+# sd(summary_df$BS_conversion_rate_mean) # 0.04003064
+# min(summary_df$BS_conversion_rate_mean) # 99.535
+# max(summary_df$BS_conversion_rate_mean) # 99.79
+
+cpg_bs_p <- ggplot(data = summary_df,
+                    aes(y = BS_conversion_rate_mean, x = F1_treat, 
+                        group = F0_treat, color = F0_treat, fill = F0_treat)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  theme_classic() +
+  labs(x = "Developmental treatment", 
+       color = "Parental treatment",
+       fill = "Parental treatment",
+       y = "BS conversion %")
+
+cpg_gcov_p
+
+```
+
+**Figure 1** | Whole genome coverage of raw WGBS libraries.
+
+The goal of 10x whole-genome coverage was to get 3-6x coverage in all samples at CpG sites after mapping. This benchmark was as low as 3x because BS-seq mapping rates are generally low. Mean CpG coverage after mapping was 5.98x with a min of 2.65x and a max of 8.82x (Fig. 2). We pretty much hit our target, and this will allow us to get ~10x coverage at whole features (exons and introns) rather than single CpGs. Woohoo!
+
+```{r, echo = FALSE, message=FALSE, warning=FALSE, results='hide'}
+cpg_cov_p
+```
+
+**Figure 2** | WGBS coverage at CpGs after mapping.
+
+A PCoA of the methylation data (transformed to normally distributed M-values) showed clustering of the samples due to relatedness and parental treatment (Fig. 3). Very strong signal for relatedness and parental upwelling.
+
+```{r include-png-scaled-5, echo=FALSE, out.width="50%"}
+knitr::include_graphics("cov3_n52_half_sibs_from_targets.png")
+```
+
+**Figure 3** | Principle coordinates analysis (PCoA) of methylation M values. Color corresponds to parental treatment. Solid lines connect full sibling samples. Dashed lines connect half sibling samples. Dimensions 1 and 2 explained 4.25% and 4.11% of variance in methylation. 
+
+To my surprise, there was significantly greater % CpG methylation in larvae that developed under upwelling conditions (0.25% increase; p = 0.008263). I am going to look at the other PCoA axes and see if there is clustering by larval treatment as well.
+
+If we filter the data for CpGs with >=3x coverage in >=66% of samples, we retain a data set of ~9.1 million CpGs. If we filter for >=10x coverage in at least >=66% of samples, we retain a dataset of ~0.9 million CpGs. I'm currently analyzing the 9.1 million CpG >=3x data set.
+
+I'm running differential methylation tests using relmatlmer(). The tests are structured as an animal model using the same structure as the RNA-seq paper. methylation varies as a function of parental environment, larval environment, a random effect of Dam, a random effect of Sire, and covariance attributed to relatedness. I've used a logit transform to make the methylation proportion data normally distributed. I also performed early analyses using log transform rather than log transform, which was a mistake. My logit transformed results will be done in 2 days. 
+
+Early results from the log-transformed data showed significant DM associated with both parental and larval upwelling (Figures 4-5). Absolute fold changes of DM were significantly higher for parental effects versus larval effects (p = 1.225e-08).
+
+```{r, echo = FALSE, message=FALSE, warning=FALSE, results='hide'}
+# Read in effect stats chunk 1-10
+ch1 <- read.csv("~/Documents/GitHub/CP_WGBS/01_diff_meth/effect_stats_chunk_1.csv")
+ch2 <- read.csv("~/Documents/GitHub/CP_WGBS/01_diff_meth/effect_stats_chunk_2.csv")
+ch20 <- read.csv("~/Documents/GitHub/CP_WGBS/01_diff_meth/effect_stats_chunk_20.csv")
+ch30 <- read.csv("~/Documents/GitHub/CP_WGBS/01_diff_meth/effect_stats_chunk_30.csv")
+ch31 <- read.csv("~/Documents/GitHub/CP_WGBS/01_diff_meth/effect_stats_chunk_31.csv") # Chunk 3 failed so we'll use 31
+ch4 <- read.csv("~/Documents/GitHub/CP_WGBS/01_diff_meth/effect_stats_chunk_4.csv")
+ch40 <- read.csv("~/Documents/GitHub/CP_WGBS/01_diff_meth/effect_stats_chunk_40.csv")
+ch5 <- read.csv("~/Documents/GitHub/CP_WGBS/01_diff_meth/effect_stats_chunk_5.csv")
+ch50 <- read.csv("~/Documents/GitHub/CP_WGBS/01_diff_meth/effect_stats_chunk_50.csv")
+ch6 <- read.csv("~/Documents/GitHub/CP_WGBS/01_diff_meth/effect_stats_chunk_6.csv")
+ch60 <- read.csv("~/Documents/GitHub/CP_WGBS/01_diff_meth/effect_stats_chunk_60.csv")
+ch7 <- read.csv("~/Documents/GitHub/CP_WGBS/01_diff_meth/effect_stats_chunk_7.csv")
+ch70 <- read.csv("~/Documents/GitHub/CP_WGBS/01_diff_meth/effect_stats_chunk_70.csv")
+ch8 <- read.csv("~/Documents/GitHub/CP_WGBS/01_diff_meth/effect_stats_chunk_8.csv")
+ch80 <- read.csv("~/Documents/GitHub/CP_WGBS/01_diff_meth/effect_stats_chunk_80.csv")
+ch9 <- read.csv("~/Documents/GitHub/CP_WGBS/01_diff_meth/effect_stats_chunk_9.csv")
+ch90 <- read.csv("~/Documents/GitHub/CP_WGBS/01_diff_meth/effect_stats_chunk_90.csv")
+ch10 <- read.csv("~/Documents/GitHub/CP_WGBS/01_diff_meth/effect_stats_chunk_10.csv")
+ch101 <- read.csv("~/Documents/GitHub/CP_WGBS/01_diff_meth/effect_stats_chunk_101.csv")
+
+ch_all <- rbind(ch1, ch2, ch31, ch4, ch5, ch6, ch7, ch8, ch9, ch10, 
+                ch20, ch30, ch40, ch50, ch60, ch70, ch80, ch90, ch101)
+
+# Crude volcano plots
+parent_p <- ggplot(data = ch_all,
+       aes(x = F0_treat_estimate, y = -log2(F0_treat_pval))) +
+  geom_point(size = 0.5, alpha = 0.25) +
+  theme_classic() +
+  labs(title = "Parental treatment",
+       y = "-log2 p-value",
+       x = "Differential methylation (logFC)") +
+  ylim(0,60) +
+  xlim(-8,8)
+
+larv_p <- ggplot(data = ch_all,
+       aes(x = F1_treat_estimate, y = -log2(F1_treat_pval))) +
+  geom_point(size = 0.5, alpha = 0.25) +
+  theme_classic() +
+  labs(title = "Larval treatment",
+       y = "-log2 p-value",
+       x = "Differential methylation (logFC)") +
+  ylim(0,60) +
+  xlim(-8,8)
+
+# Should be able to make the slopes comparable by perorming
+# adjusted_slope = beta * ln(2) * (y + 0.000001)
+# Where y = the mean proportion of CpG meth under non-upwelling
+
+# Volcano plots appear to show two different distributions 
+# Large DM for lowly-methylated CpGs, weak DM for highly-methylated CpGs
+
+# Adjusted p values
+# Filter out < 0.01 fold-change CpGs
+# ch_all_F0f <- filter(ch_all, abs(F0_treat_estimate) > .01)
+# ch_all_F1f <- filter(ch_all, abs(F1_treat_estimate) > .01)
+# 
+# ch_all_F0f$F0_fdr <- p.adjust(ch_all_F0f$F0_treat_pval, method = "fdr")
+# ch_all_F1f$F1_fdr <- p.adjust(ch_all_F1f$F1_treat_pval, method = "fdr")
+# 
+# table(p.adjust(ch_all$F0_treat_pval, method = "fdr") < 0.05) # 918
+# table(p.adjust(ch_all$F1_treat_pval, method = "fdr") < 0.05) # 779
+# 
+# filter(ch_all_F0f, F0_fdr < 0.05) # 24/918 of 20,000 CpGs or 4.5% - projecting ~10-418k DM CpGs
+# filter(ch_all_F1f, F1_fdr < 0.05) # 94/779 of 20,000 CpGs or 3.9% - projecting ~73-353k DM CpGs
+
+# Sig diff's between F0_treat and F1_treat logFCs?
+library(lme4)
+library(lmerTest)
+
+lme_df <- rbind(data.frame(CpG = ch_all$CpG_ID,
+                           logFC = ch_all$F0_treat_estimate,
+                           effect = "F0_treat"),
+                data.frame(CpG = ch_all$CpG_ID,
+                           logFC = ch_all$F1_treat_estimate,
+                           effect = "F1_treat"))
+
+logFC_lmer <- lmerTest::lmer(abs(logFC) ~ effect + (1|CpG), data = lme_df)
+
+# Parental DM has significantly more logFC by 0.07759
+logFC_anova <- anova(logFC_lmer, method = "F")
+
+parent_p
+
+```
+
+**Figure 4** | Volcano plot of differential methylation associated under parental upwelling in a sneak peek of 20,000 out of 9.1 million CpGs. 4.5% of CpGs were differentially methylated after FDR correction (918/20,000). You'll notice an artifact in this plot where there are high -log p-values with small logFC values. This is an artifact of using log-transformed methylation proportions rather than logit-transformed proportions. I'm rerunning the models with logit-transformed data to fix this.
+
+```{r, echo = FALSE, message=FALSE, warning=FALSE, results='hide'}
+larv_p
+```
+
+**Figure 5** | Volcano plot of differential methylation associated under parental upwelling in a sneak peek of 20,000 out of 9.1 million CpGs. 3.9% of CpGs were differentially methylated after FDR correction (779/20,000). Same artifact here that will be fixed after running the logit-transformed models.
+
+## Next steps
+
+I'll share the final differential methylation results when they're done. In the meantime, we should discuss what we want the goals of this paper to me. Below are three questions and three potential aims. I'm happy to focus on some combination of these. Whatever we think is the most impactful and important. However, pursuing all of these aims in a single paper would make it too complicated.
+
+**Q1** Are there pathways that exhibit correlations between differential methylation and expression?
+
+Aim 1A - Instead of taking a whole transcriptome/whole methylome approach to this question as we've done in the past, I would fit structural equation models to identify significant environment->methylation->expression paths and test that genes in these paths are enriched for specific GO terms.
+
+Aim 1B - Structural equation models could also be fit to modules of genes rather than single genes. This would identify WGCNA modules that correlate with environmental changes in methylation.
+
+**Q2** Are there significant environment->methylation->expression->phenotype relationships during plasticity?
+
+Aim 2 - The canonical model for how methylation affects plasticity is that an environmental cue triggers a change in methylation, this triggers a change in expression, and that triggers a phenotypic change. I could take the structural equation approach in Aim 1 and expand it to include phenotypic data, allowing us to identify genes in significant environment-methylation-expression-phenotype networks. We could do this for all three phenotypes (size, biomineralization, abnormality).
+
+**Q3** How heritable is DNA methylation? How much GxE in methylation exists between developmental environments?
+
+Aim 3 - This is a simple measure that I can extract from the animal models I'm currently running. One thing we could do is compare methylation-expression-phenotype networks between environmentally-induced differential methylation and genetic differences in methylation between families.
+
+**Q4** Is GxE in gene expression predicted by GxE in DNA methylation?
+
+Aim 4 - Environmental changes in methylation are proposed to be one molecular mechanism underpinning GxE in expression and phenotype. We could test whether genotype-by-environment interactions shaping methylation predict GxE in expression. This would either be through quantitative genetic models, or we could call SNPs from the WGBS data.
