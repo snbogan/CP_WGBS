@@ -1,0 +1,55 @@
+[2024-11-21 22:55:47,267] multiqc                                            [DEBUG  ]  This is MultiQC v1.21
+[2024-11-21 22:55:47,269] multiqc                                            [DEBUG  ]  Command used: /hb/home/snbogan/.conda/envs/multiqc/bin/multiqc fastqc_raw/ -o multiqc_raw/
+[2024-11-21 22:55:48,146] multiqc                                            [WARNING]  MultiQC Version v1.25.2 now available!
+[2024-11-21 22:55:48,146] multiqc                                            [DEBUG  ]  Latest MultiQC version is v1.25.2, released 2024-11-20
+[2024-11-21 22:55:48,146] multiqc                                            [DEBUG  ]  Working dir : /hb/home/snbogan/WGBS/CrossPhox_WGBS
+[2024-11-21 22:55:48,146] multiqc                                            [DEBUG  ]  Template    : default
+[2024-11-21 22:55:48,146] multiqc                                            [DEBUG  ]  Running Python 3.11.9 | packaged by conda-forge | (main, Apr 19 2024, 18:36:13) [GCC 12.3.0]
+[2024-11-21 22:55:48,147] multiqc                                            [DEBUG  ]  Analysing modules: custom_content, ccs, ngsderive, purple, conpair, isoseq, lima, peddy, somalier, methylqa, mosdepth, phantompeakqualtools, qualimap, bamdst, preseq, hifiasm, quast, qorts, rna_seqc, rockhopper, rsem, rseqc, busco, bustools, goleft_indexcov, gffcompare, disambiguate, supernova, deeptools, sargasso, verifybamid, mirtrace, happy, mirtop, sambamba, gopeaks, homer, hops, macs2, theta2, snpeff, gatk, htseq, bcftools, featureCounts, fgbio, dragen, dragen_fastqc, dedup, pbmarkdup, damageprofiler, mapdamage, biobambam2, jcvi, mtnucratio, picard, vep, bakta, prokka, qc3C, nanostat, samblaster, samtools, sexdeterrmine, seqera_cli, eigenstratdatabasetools, bamtools, jellyfish, vcftools, longranger, stacks, varscan2, snippy, umitools, truvari, megahit, bbmap, bismark, biscuit, diamond, hicexplorer, hicup, hicpro, salmon, kallisto, slamdunk, star, hisat2, tophat, bowtie2, bowtie1, cellranger, snpsplit, odgi, pangolin, nextclade, freyja, humid, kat, leehom, librarian, nonpareil, adapterRemoval, bbduk, clipandmerge, cutadapt, flexbar, sourmash, kaiju, bracken, kraken, malt, motus, trimmomatic, sickle, skewer, sortmerna, biobloomtools, fastq_screen, afterqc, fastp, fastqc, filtlong, prinseqplusplus, pychopper, porechop, pycoqc, minionqc, anglerfish, multivcfanalyzer, clusterflow, checkqc, bcl2fastq, bclconvert, interop, ivar, flash, seqyclean, optitype, whatshap, spaceranger, xenome, xengsort, metaphlan, seqwho
+[2024-11-21 22:55:48,147] multiqc                                            [DEBUG  ]  Using temporary directory for creating report: /tmp/tmpd3kf344m
+[2024-11-21 22:55:48,172] multiqc                                            [INFO   ]  Search path : /hb/home/snbogan/WGBS/CrossPhox_WGBS/fastqc_raw
+[2024-11-21 22:56:00,987] multiqc                                            [DEBUG  ]  Summary of files that were skipped by the search: [skipped_module_specific_max_filesize: 4095] // [skipped_no_match: 315]
+[2024-11-21 22:56:01,799] multiqc                                            [DEBUG  ]  No samples found: custom_content
+[2024-11-21 22:56:33,567] multiqc.modules.fastqc.fastqc                      [INFO   ]  Found 315 reports
+[2024-11-21 22:56:33,572] multiqc.utils.util_functions                       [DEBUG  ]  Wrote data file multiqc_fastqc.txt
+[2024-11-21 22:56:37,086] multiqc.plots.plotly.heatmap                       [DEBUG  ]  Resizing from 495x3465 to fit the maximum size 900x500
+[2024-11-21 22:56:37,086] multiqc.plots.plotly.heatmap                       [DEBUG  ]  Heatmap size: 900x500, px per element: 81.82x1.59
+[2024-11-21 22:56:37,251] multiqc.utils.software_versions                    [DEBUG  ]  Reading software versions from config.software_versions
+[2024-11-21 22:56:37,268] multiqc.utils.util_functions                       [DEBUG  ]  Wrote data file multiqc_software_versions.txt
+[2024-11-21 22:56:37,272] multiqc.plots.plotly.violin                        [DEBUG  ]  Violin for '% Dups': sample number is 315 > True. Will add interactive points only for the outlier values.
+[2024-11-21 22:56:37,273] multiqc.plots.plotly.violin                        [DEBUG  ]  Violin for '% Dups': found 5 outliers
+[2024-11-21 22:56:37,273] multiqc.plots.plotly.violin                        [DEBUG  ]  Violin for '% GC': sample number is 315 > True. Will add interactive points only for the outlier values.
+[2024-11-21 22:56:37,273] multiqc.plots.plotly.violin                        [DEBUG  ]  No outliers found with Z-score cutoff 2.0, trying a lower cutoff: 1.8, metric: '% GC'
+[2024-11-21 22:56:37,273] multiqc.plots.plotly.violin                        [DEBUG  ]  No outliers found with Z-score cutoff 1.8, trying a lower cutoff: 1.6, metric: '% GC'
+[2024-11-21 22:56:37,274] multiqc.plots.plotly.violin                        [DEBUG  ]  No outliers found with Z-score cutoff 1.6, trying a lower cutoff: 1.4, metric: '% GC'
+[2024-11-21 22:56:37,274] multiqc.plots.plotly.violin                        [DEBUG  ]  No outliers found with Z-score cutoff 1.4, trying a lower cutoff: 1.2, metric: '% GC'
+[2024-11-21 22:56:37,274] multiqc.plots.plotly.violin                        [DEBUG  ]  Violin for '% GC': found 2 outliers
+[2024-11-21 22:56:37,274] multiqc.plots.plotly.violin                        [DEBUG  ]  Violin for 'Average Read Length': sample number is 315 > True. Will add interactive points only for the outlier values.
+[2024-11-21 22:56:37,274] multiqc.plots.plotly.violin                        [DEBUG  ]  No outliers found with Z-score cutoff 2.0, trying a lower cutoff: 1.8, metric: 'Average Read Length'
+[2024-11-21 22:56:37,274] multiqc.plots.plotly.violin                        [DEBUG  ]  No outliers found with Z-score cutoff 1.8, trying a lower cutoff: 1.6, metric: 'Average Read Length'
+[2024-11-21 22:56:37,274] multiqc.plots.plotly.violin                        [DEBUG  ]  No outliers found with Z-score cutoff 1.6, trying a lower cutoff: 1.4, metric: 'Average Read Length'
+[2024-11-21 22:56:37,274] multiqc.plots.plotly.violin                        [DEBUG  ]  No outliers found with Z-score cutoff 1.4, trying a lower cutoff: 1.2, metric: 'Average Read Length'
+[2024-11-21 22:56:37,274] multiqc.plots.plotly.violin                        [DEBUG  ]  No outliers found with Z-score cutoff 1.2, trying a lower cutoff: 1.0, metric: 'Average Read Length'
+[2024-11-21 22:56:37,274] multiqc.plots.plotly.violin                        [DEBUG  ]  No outliers found with Z-score cutoff 1.0, trying a lower cutoff: 0.8, metric: 'Average Read Length'
+[2024-11-21 22:56:37,274] multiqc.plots.plotly.violin                        [DEBUG  ]  Violin for 'Average Read Length': found 0 outliers
+[2024-11-21 22:56:37,275] multiqc.plots.plotly.violin                        [DEBUG  ]  Violin for 'Median Read Length': sample number is 315 > True. Will add interactive points only for the outlier values.
+[2024-11-21 22:56:37,275] multiqc.plots.plotly.violin                        [DEBUG  ]  No outliers found with Z-score cutoff 2.0, trying a lower cutoff: 1.8, metric: 'Median Read Length'
+[2024-11-21 22:56:37,275] multiqc.plots.plotly.violin                        [DEBUG  ]  No outliers found with Z-score cutoff 1.8, trying a lower cutoff: 1.6, metric: 'Median Read Length'
+[2024-11-21 22:56:37,275] multiqc.plots.plotly.violin                        [DEBUG  ]  No outliers found with Z-score cutoff 1.6, trying a lower cutoff: 1.4, metric: 'Median Read Length'
+[2024-11-21 22:56:37,275] multiqc.plots.plotly.violin                        [DEBUG  ]  No outliers found with Z-score cutoff 1.4, trying a lower cutoff: 1.2, metric: 'Median Read Length'
+[2024-11-21 22:56:37,275] multiqc.plots.plotly.violin                        [DEBUG  ]  No outliers found with Z-score cutoff 1.2, trying a lower cutoff: 1.0, metric: 'Median Read Length'
+[2024-11-21 22:56:37,275] multiqc.plots.plotly.violin                        [DEBUG  ]  No outliers found with Z-score cutoff 1.0, trying a lower cutoff: 0.8, metric: 'Median Read Length'
+[2024-11-21 22:56:37,275] multiqc.plots.plotly.violin                        [DEBUG  ]  Violin for 'Median Read Length': found 0 outliers
+[2024-11-21 22:56:37,276] multiqc.plots.plotly.violin                        [DEBUG  ]  Violin for '% Failed': sample number is 315 > True. Will add interactive points only for the outlier values.
+[2024-11-21 22:56:37,276] multiqc.plots.plotly.violin                        [DEBUG  ]  No outliers found with Z-score cutoff 2.0, trying a lower cutoff: 1.8, metric: '% Failed'
+[2024-11-21 22:56:37,276] multiqc.plots.plotly.violin                        [DEBUG  ]  Violin for '% Failed': found 1 outliers
+[2024-11-21 22:56:37,276] multiqc.plots.plotly.violin                        [DEBUG  ]  Violin for 'M Seqs': sample number is 315 > True. Will add interactive points only for the outlier values.
+[2024-11-21 22:56:37,277] multiqc.plots.plotly.violin                        [DEBUG  ]  Violin for 'M Seqs': found 2 outliers
+[2024-11-21 22:56:37,523] multiqc.utils.util_functions                       [DEBUG  ]  Wrote data file multiqc_general_stats.txt
+[2024-11-21 22:56:37,524] multiqc                                            [DEBUG  ]  Compressing plot data
+[2024-11-21 22:56:41,798] multiqc.utils.util_functions                       [DEBUG  ]  Wrote data file multiqc_data.json
+[2024-11-21 22:56:41,799] multiqc                                            [INFO   ]  Report      : multiqc_raw/multiqc_report.html
+[2024-11-21 22:56:41,800] multiqc                                            [INFO   ]  Data        : multiqc_raw/multiqc_data
+[2024-11-21 22:56:41,800] multiqc                                            [DEBUG  ]  Moving data file from '/tmp/tmpd3kf344m/multiqc_data' to '/hb/home/snbogan/WGBS/CrossPhox_WGBS/multiqc_raw/multiqc_data'
+[2024-11-21 22:56:41,854] multiqc                                            [DEBUG  ]  Full report path: /hb/home/snbogan/WGBS/CrossPhox_WGBS/multiqc_raw/multiqc_report.html
+[2024-11-21 22:56:42,981] multiqc                                            [INFO   ]  MultiQC complete

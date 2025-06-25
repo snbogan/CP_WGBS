@@ -24,8 +24,8 @@ cd /hb/home/snbogan/WGBS/CrossPhox_WGBS/
 find /hb/home/snbogan/WGBS/CrossPhox_WGBS/01.RawData -name "*_2.fq.gz" | parallel -j 2 --link '
     reverse_read={}
     forward_read="${reverse_read/_2.fq.gz/_1.fq.gz}"
-    output_forward="trimmed_data_polya/$(basename "${forward_read/.fq.gz/.trimmed.fq.gz}")"
-    output_reverse="trimmed_data_polya/$(basename "${reverse_read/.fq.gz/.trimmed.fq.gz}")"
+    output_forward="trimmed_data_polya2/$(basename "${forward_read/.fq.gz/.trimmed.fq.gz}")"
+    output_reverse="trimmed_data_polya2/$(basename "${reverse_read/.fq.gz/.trimmed.fq.gz}")"
     
     cutadapt \
         -u 0 -U 8 \
@@ -36,7 +36,7 @@ find /hb/home/snbogan/WGBS/CrossPhox_WGBS/01.RawData -name "*_2.fq.gz" | paralle
         -q 0,0 \
         -Q 0,0 \
         -m 1 \
-        "$forward_read" "$reverse_read"
+        -p "$forward_read" "$reverse_read"
 '
   
 

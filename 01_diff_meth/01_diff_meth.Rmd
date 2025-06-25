@@ -8,10 +8,14 @@ output: html_document
 All commands run on UCSC Hummingbird cluster
 
 ```{r setup, include=FALSE}
-knitr::opts_knit$set(root.dir = '/hb/home/snbogan/WGBS/Cross')
+
+knitr::opts_knit$set(root.dir = '/hb/home/snbogan/WGBS/Cross_Phox_WGBS/01_diff_meth/')
 
 library(tidyverse)
 library(edgeR)
+library(BiocParallel)
+library(lme4qtl)
+library(nadiv)
 
 ```
 
@@ -20,7 +24,168 @@ library(edgeR)
 ```{bash}
 
 # Start interactive session
-salloc --account=pi-jkoc --partition=lab-colibri --qos=pi-jkoc --ntasks=1 --cpus-per-task=8 --mem=120G --time=12:00:00
+salloc --account=pi-jkoc --partition=lab-colibri --qos=pi-jkoc --ntasks=1 --cpus-per-task=1 --mem=100G --time=04:00:00
+
+```
+
+### Summarize methylation and coverage
+
+```{bash}
+
+# Start fresh output file
+echo "sample_id,mean_coverage,sd_coverage,mean_methylation_percent,sd_methylation_percent" > CpG_coverage_methylation_summary.csv
+
+# Loop through all cov files
+for file in *_1.CpG.merged.cov.CpG_report.merged_CpG_evidence.cov; do
+
+  # Extract sample ID from the filename
+  sample_id="${file%%_1.CpG.merged.cov.CpG_report.merged_CpG_evidence.cov}"
+
+  # Compute coverage and methylation percent per CpG
+  awk '{
+    cov = $5 + $6;
+    meth_percent = ($5 + $6 > 0) ? (100 * $5 / ($5 + $6)) : 0;
+    print cov, meth_percent;
+  }' "$file" > tmp_cov_meth.txt
+
+  # Compute mean and SD of coverage
+  read mean_cov sd_cov <<< $(awk '{
+    sum += $1; sumsq += ($1)^2
+  } END {
+    mean = sum / NR; sd = sqrt(sumsq / NR - mean^2)
+    printf "%.2f %.2f", mean, sd
+  }' tmp_cov_meth.txt)
+
+  # Compute mean and SD of methylation percent
+  read mean_meth sd_meth <<< $(awk '{
+    sum += $2; sumsq += ($2)^2
+  } END {
+    mean = sum / NR; sd = sqrt(sumsq / NR - mean^2)
+    printf "%.2f %.2f", mean, sd
+  }' tmp_cov_meth.txt)
+
+  # Append to CSV
+  echo "$sample_id,$mean_cov,$sd_cov,$mean_meth,$sd_meth" >> CpG_coverage_methylation_summary.csv
+
+  # Clean up temporary file
+  rm tmp_cov_meth.txt
+done
+
+```
+
+Read in and plot the summary csv
+
+```{r}
+
+# Read in summary
+summary_df <- read.csv("CpG_coverage_methylation_summary.csv")
+
+# Plot CpG coverage across F0 x F1 treatments
+cpg_cov_p <- ggplot(data = summary_df,
+                    aes(y = mean_coverage, x = F1_treat, 
+                        group = F0_treat, color = F0_treat, fill = F0_treat)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  theme_classic() +
+  labs(x = "Developmental treatment", 
+       color = "Parental treatment",
+       fill = "Parental treatment",
+       y = "Mean CpG coverage")
+
+cpg_cov_p
+
+# Was coverage varying according to an interaction? No, but greater under dev upwelling 
+cpg_cov_glm <- glm((mean_methylation_percent/100) ~ F0_treat + F1_treat + F0_treat:F1_treat,
+                    data = summary_df)
+
+anova(cpg_cov_glm, test = "F")
+
+# Plot CpG % methylation across F0 x F1 treatments
+cpg_meth_p <- ggplot(data = summary_df,
+                    aes(y = mean_methylation_percent, x = F1_treat, 
+                        group = F0_treat, color = F0_treat, fill = F0_treat)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  theme_classic() +
+  labs(x = "Developmental treatment", 
+       color = "Parental treatment",
+       fill = "Parental treatment",
+       y = "Mean CpG % methylation")
+
+cpg_meth_p
+
+# Was % methylation greater under developmental upwelling? 
+# Yes, meth significantly increased under developmental upwelling by 0.25%
+cpg_meth_glm <- glm((mean_methylation_percent/100) ~ F0_treat + F1_treat,
+                    data = summary_df)
+
+summary(cpg_meth_glm)
+anova(cpg_meth_glm, test = "F")
+
+# Read in WGBS library and seq report
+seq_df <- read.csv("~/Documents/GitHub/CP_WGBS/src/tables/qc.summary.csv")
+
+## Sum bases and average BS conversion rate
+seq_df$Sample <- as.factor(seq_df$Sample)
+
+# Summarize by Sample
+seq_sum_df <- aggregate(cbind(Raw.data, BS.conversion.rate...) ~ Sample, 
+                        data = seq_df, 
+                        FUN = function(x) c(sum = sum(x), mean = mean(x)))
+
+# Clean up the output (optional)
+seq_sum_df$Raw_data_sum <- seq_sum_df$Raw.data[, "sum"]
+seq_sum_df$BS_conversion_rate_mean <- seq_sum_df$BS.conversion.rate...[, "mean"]
+
+# Keep only the relevant columns
+seq_sum_df <- seq_sum_df[, c("Sample", "Raw_data_sum", "BS_conversion_rate_mean")]
+
+# Merge with meth summary
+summary_df <- merge(summary_df,
+                    seq_sum_df,
+                    by.x = "sample_id",
+                    by.y = "Sample") # Issue with merging U22_U2 - look into this
+
+# Plot coverage divided by genome size
+summary_df$genome_cov <- summary_df$Raw_data_sum / 9.218e+8
+
+# Mean and SD of genome cov
+mean(summary_df$genome_cov) # 12.85432
+sd(summary_df$genome_cov) # 5.593113
+min(summary_df$genome_cov) # 5.273766
+max(summary_df$genome_cov) # 53.93437
+
+cpg_gcov_p <- ggplot(data = summary_df,
+                    aes(y = genome_cov, x = F1_treat, 
+                        group = F0_treat, color = F0_treat, fill = F0_treat)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  theme_classic() +
+  labs(x = "Developmental treatment", 
+       color = "Parental treatment",
+       fill = "Parental treatment",
+       y = "WGBS genome coverage")
+
+cpg_gcov_p
+
+# BS conversion
+mean(summary_df$BS_conversion_rate_mean) # 99.67591
+sd(summary_df$BS_conversion_rate_mean) # 0.04003064
+min(summary_df$BS_conversion_rate_mean) # 99.535
+max(summary_df$BS_conversion_rate_mean) # 99.79
+
+cpg_bs_p <- ggplot(data = summary_df,
+                    aes(y = BS_conversion_rate_mean, x = F1_treat, 
+                        group = F0_treat, color = F0_treat, fill = F0_treat)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  theme_classic() +
+  labs(x = "Developmental treatment", 
+       color = "Parental treatment",
+       fill = "Parental treatment",
+       y = "BS conversion %")
+
+cpg_bs_p
 
 ```
 
@@ -39,8 +204,713 @@ samples <- gsub("_1.CpG.merged.cov.CpG_report.merged_CpG_evidence.cov",
 
 yall <- readBismark2DGE(cov_list, sample.names = samples)
 
+save(yall, file = "yall.Rdata") # ~1.3 gb large
+
+```
+
+Start with yall object after cache
+
+```{r}
+
+# Load yall
+load("yall.Rdata")
+
 # Read in targets df for edgeR model
 targets <- read.csv("input_data/sample_meta_data.csv")
 
+# Check dimensions
+dim(yall) # 21267553 CpGs and 156 unmeth + meth counts
+
+# Call binary methylation scores across CpGs
+Methylation <- gl(2, 1, ncol(yall), labels = c("Me", "Un"))
+
+# Create matrix of read coverage
+Me <- yall$counts[, Methylation == "Me"]
+Un <- yall$counts[, Methylation == "Un"]
+Coverage <- Me + Un
+
+# Filter CpGs based on read coverage: at least 3 reads >10 % of samples
+HasCoverage <- rowSums(Coverage >= 3) >= 52
+table(HasCoverage)
+# FALSE      TRUE 
+# 21008888   258665
+
+# Filter
+y <- yall[HasCoverage , keep.lib.sizes = FALSE]
+
+# Calculate library sizes
+TotalLibSize <-
+  y$samples$lib.size[ Methylation == "Me"] + 
+  y$samples$lib.size[ Methylation == "Un"]
+
+y$samples$lib.size <- rep(TotalLibSize, each = 2)
+
+# Create new methylated and unmethylated count matrices post-filtering
+Me <- y$counts[, Methylation == "Me"]
+Un <- y$counts[, Methylation == "Un"]
+M <- log2(Me + 2) - log2(Un + 2)
+colnames(M) <- samples
+
+# # Quick MDS plot
+cov3_n8_mds <- plotMDS(M, main = "M-values", labels = TRUE)
+
+png(filename="cov3_n8_mds.png")
+plot(cov3_n8_mds)
+dev.off()
+
+## Alternative with sample
+# Extract sibship ID: everything before first "_"
+sibship <- sub("_.*", "", colnames(M))
+
+# Create named color palette (optional: helps visualize sibships)
+sibship_levels <- unique(sibship)
+sibship_colors <- setNames(rainbow(length(sibship_levels)), sibship_levels)
+
+# Set up plot output
+png(filename = "cov3_n52_mds_labs_by_F0_treat.png", width = 800, height = 800)
+
+# Create parental treat var
+cov3_n52_mds$F0_treat <- substr(samples, 1, 1)
+cov3_n52_mds$ID <- samples
+
+# Define colors by F0_treat
+treat_colors <- ifelse(cov3_n52_mds$F0_treat == "N", "blue", "red")
+
+# Base plot
+plot(cov3_n52_mds$x, cov3_n52_mds$y,
+     type = "n",
+     xlab = "Dimension 1", ylab = "Dimension 2",
+     main = "MDS Plot Colored by F0_treat")
+
+# Draw lines connecting samples within the same sibship
+for (s in sibship_levels) {
+  idx <- which(sibship == s)
+  lines(cov3_n52_mds$x[idx], cov3_n52_mds$y[idx],
+        col = treat_colors[idx], lwd = 1.2)
+}
+
+# Add colored points
+points(cov3_n52_mds$x, cov3_n52_mds$y,
+       col = treat_colors, pch = 16)
+
+# Add colored text labels
+text(cov3_n52_mds$x,
+     cov3_n52_mds$y,
+     labels = samples,
+     col = treat_colors,
+     cex = 0.7, pos = 3)
+
+# Add a legend
+legend("topright", legend = c("F0_treat = N", "F0_treat = S"),
+       col = c("blue", "red"), pch = 16)
+
+dev.off()
+
+## ggplot MDS plot
+# Data frame containing all plotting data
+# Create a data frame manually
+plot_df <- data.frame(
+  x = cov3_n52_mds$x,
+  y = cov3_n52_mds$y,
+  sample = samples,
+  sibship = sibship,
+  F0_treat = cov3_n52_mds$F0_treat
+)
+
+# Set colors if F0_treat has levels "N" and "S"
+treat_colors <- c("N" = "blue", "U" = "red")  # update levels if needed
+
+# Generate the plot
+p <- ggplot(plot_df, aes(x = x, y = y, color = F0_treat, group = sibship)) +
+  geom_path(linewidth = 1.2) +
+  geom_point(size = 3) +
+  geom_text(aes(label = sample), size = 4, vjust = -0.7) +
+  scale_color_manual(values = treat_colors) +
+  theme_classic(base_size = 20) +
+  labs(
+    x = "Dimension 1", y = "Dimension 2",
+  )
+
+# Save to file
+ggsave("cov3_n52_mds_labs_by_F0_treat_ggplot.png", plot = p, width = 13, height = 12, dpi = 600)
+
+# Add dashed lines that connect half sibs
+cov3_n52_mds$ID <- sub("\\d(?!.*\\d)", "", cov3_n52_mds$ID, perl = TRUE)
+
+half_df <- data.frame(
+  ID = cov3_n52_mds[[12]],
+  x = cov3_n52_mds[[9]],
+  y = cov3_n52_mds[[10]],
+  F0_treat = cov3_n52_mds$F0_treat,
+  stringsAsFactors = FALSE
+) %>%
+  left_join(targets_f, by = "ID") %>%
+  mutate(fullsib = paste(Dam, Sire, sep = "_"))
+
+# Compute centroids of full-sib families
+centroids <- half_df %>%
+  group_by(fullsib) %>%
+  summarize(
+    x = mean(x),
+    y = mean(y),
+    Dam = first(Dam),
+    Sire = first(Sire),
+    fam_letter = substr(first(ID), 1, 1),
+    .groups = "drop"
+  )
+
+# Identify pairs of full-sib families that share either Dam or Sire but not both
+half_sib_pairs <- expand.grid(
+  fullsib1 = centroids$fullsib,
+  fullsib2 = centroids$fullsib,
+  stringsAsFactors = FALSE
+) %>%
+  filter(fullsib1 < fullsib2) %>%
+  left_join(centroids, by = c("fullsib1" = "fullsib")) %>%
+  rename(x1 = x, y1 = y, Dam1 = Dam, Sire1 = Sire, fam1_letter = fam_letter) %>%
+  left_join(centroids, by = c("fullsib2" = "fullsib")) %>%
+  rename(x2 = x, y2 = y, Dam2 = Dam, Sire2 = Sire, fam2_letter = fam_letter) %>%
+  filter(
+    (Dam1 == Dam2 & Sire1 != Sire2) |
+    (Dam1 != Dam2 & Sire1 == Sire2)
+  ) %>%
+  mutate(fam_letter = fam1_letter)  # assumes both families from same letter group
+
+# Color map for dashed half-sib lines and points
+line_colors <- c("N" = "blue", "U" = "red")
+point_colors <- c("N" = "blue", "U" = "red")
+
+# Create the plot
+p <- ggplot() +
+  # Dashed half-sib lines first (behind)
+  geom_segment(
+    data = half_sib_pairs,
+    aes(x = x1, y = y1, xend = x2, yend = y2, color = fam_letter),
+    linetype = "dashed",
+    linewidth = 1,
+    inherit.aes = FALSE
+  ) +
+  # Solid lines for full-sib groups
+  geom_path(
+    data = half_df,
+    aes(x = x, y = y, group = fullsib, color = F0_treat.x),
+    linewidth = 1.2
+  ) +
+  geom_point(
+    data = half_df,
+    aes(x = x, y = y, color = F0_treat.x),
+    size = 3
+  ) +
+  scale_color_manual(values = point_colors) +
+  theme_classic(base_size = 20) +
+  theme(legend.position = c(0.25,0.25)) +
+  labs(
+    x = "Dimension 1",
+    y = "Dimension 2",
+    title = "MDS Plot: Full Sibs (solid), Half Sibs (dashed)",
+    color = "Parental treatment"
+  )
+
+# Save the plot
+ggsave("cov3_n52_half_sibs_from_targets.png", plot = p, width = 12, height = 12, dpi = 600)
+
+# Dim 1 = 4.246132 % variance explained 
+# Dim 2 = 4.110424 % variance explained 
+
 ```
+
+```{r}
+# Fix methyl matrix names
+colnames(meth_prop_mat) <- gsub("[0-9]+$", "", colnames(meth_prop_mat))
+
+# Function to calculate relatedness
+calculate_relatedness <- function(ped) {
+  n <- nrow(ped)
+  relatedness_matrix <- matrix(0, n, n, dimnames = list(ped$ID, ped$ID))
+  
+  for (i in 1:n) {
+    for (j in i:n) {
+      if (i == j) {
+        if (ped$ID[i] %in% ped$Dam | ped$ID[i] %in% ped$Sire) {
+          relatedness_matrix[i, j] <- 1 # Same parental IDs
+        } else {
+          relatedness_matrix[i, j] <- 0.5 # Same offspring ID (full siblings)
+        }
+      } else {
+        dam_i <- ped$Dam[i]
+        sire_i <- ped$Sire[i]
+        dam_j <- ped$Dam[j]
+        sire_j <- ped$Sire[j]
+        
+        if (!is.na(dam_i) & !is.na(dam_j) & dam_i == dam_j) {
+          if (!is.na(sire_i) & !is.na(sire_j) & sire_i == sire_j) {
+            relatedness_matrix[i, j] <- 0.5 # Full siblings
+          } else {
+            relatedness_matrix[i, j] <- 0.25 # Half siblings (same dam)
+          }
+        } else if (!is.na(sire_i) & !is.na(sire_j) & sire_i == sire_j) {
+          relatedness_matrix[i, j] <- 0.25 # Half siblings (same sire)
+        } else if ((!is.na(dam_i) & dam_i == ped$ID[j]) | (!is.na(dam_j) & dam_j == ped$ID[i]) |
+                   (!is.na(sire_i) & sire_i == ped$ID[j]) | (!is.na(sire_j) & sire_j == ped$ID[i])) {
+          relatedness_matrix[i, j] <- 0.5 # Parent-offspring
+        } else {
+          relatedness_matrix[i, j] <- 0 # Unrelated
+        }
+        
+        relatedness_matrix[j, i] <- relatedness_matrix[i, j]
+      }
+    }
+  }
+  
+  return(relatedness_matrix)
+}
+
+# Function to ensure positive definiteness
+make_positive_definite <- function(mat, epsilon = 1e-6) {
+   return(mat + adjustment)
+  }
+}
+
+# Create relatedness matrix
+cstm_a_m <- as.matrix(calculate_relatedness(pedi_p))
+cstm_a_m <- make_positive_definite(cstm_a_m)
+
+cov_list <- list.files(path = "input_data", 
+                        pattern = "\\.cov$", 
+                        full.names = TRUE)
+# Read in list
+samples <- gsub("_1.CpG.merged.cov.CpG_report.merged_CpG_evidence.cov",
+                        "", basename(cov_list))
+
+# Filter targets
+targets <- read.csv("input_data/sample_meta_data.csv")
+samples_corr <- gsub("[0-9]+$", "", samples)
+targets_f <- filter(targets, ID %in% samples_corr)
+
+# Define cores
+param <- MulticoreParam(workers = 36, progressbar = TRUE)
+
+fit_cpg_model <- function(i) {
+  prop_meth <- as.numeric(meth_prop_mat[i, ])
+  targets_f$prop_meth <- prop_meth
+  
+  fit <- try(
+    relmatLmer(prop_meth ~ F0_treat + F1_treat + (1|ID) + (1|Dam) + (1|Sire), 
+               data = targets_f, 
+               relmat = list(ID = cstm_a_m)),
+    silent = TRUE
+  )
+  
+  if(inherits(fit, "try-error")) {
+    return(NA)
+  }
+  
+  return(fit)
+}
+
+quiet_fit_cpg_model <- function(i) {
+  suppressMessages(
+    suppressWarnings(
+      fit_cpg_model(i)
+    )
+  )
+}
+
+# Run in parallel over CpGs:
+results <- bplapply(seq_len(nrow(meth_prop_mat)), quiet_fit_cpg_model, BPPARAM = param)
+
+```
+
+Chunks of 20,000 CpGs at a time
+
+```{r}
+
+library(tidyverse)
+library(BiocParallel)
+library(lme4qtl)
+library(nadiv)
+
+# Read in necessary data
+load("meth_prop_mat.Rdata")
+
+# Log transform methyl matrix
+meth_prop_mat_log <- log2(meth_prop_mat + 0.000001)
+
+# Logit transform methyl matrix
+meth_prop_mat_logit <- log((meth_prop_mat + 0.000001) / 
+                           (1-meth_prop_mat + 0.000001))
+
+# Import pedigree
+pedi <- read.csv("input_data/pedigree_meta.csv")
+pedi_p <- prepPed(pedi)
+
+# Fix methyl matrix names
+colnames(meth_prop_mat_log) <- gsub("[0-9]+$", "", colnames(meth_prop_mat_log))
+
+# Function to calculate relatedness
+calculate_relatedness <- function(ped) {
+  n <- nrow(ped)
+  relatedness_matrix <- matrix(0, n, n, dimnames = list(ped$ID, ped$ID))
+  
+  for (i in 1:n) {
+    for (j in i:n) {
+      if (i == j) {
+        if (ped$ID[i] %in% ped$Dam | ped$ID[i] %in% ped$Sire) {
+          relatedness_matrix[i, j] <- 1 # Same parental IDs
+        } else {
+          relatedness_matrix[i, j] <- 0.5 # Same offspring ID (full siblings)
+        }
+      } else {
+        dam_i <- ped$Dam[i]
+        sire_i <- ped$Sire[i]
+        dam_j <- ped$Dam[j]
+        sire_j <- ped$Sire[j]
+        
+        if (!is.na(dam_i) & !is.na(dam_j) & dam_i == dam_j) {
+          if (!is.na(sire_i) & !is.na(sire_j) & sire_i == sire_j) {
+            relatedness_matrix[i, j] <- 0.5 # Full siblings
+          } else {
+            relatedness_matrix[i, j] <- 0.25 # Half siblings (same dam)
+          }
+        } else if (!is.na(sire_i) & !is.na(sire_j) & sire_i == sire_j) {
+          relatedness_matrix[i, j] <- 0.25 # Half siblings (same sire)
+        } else if ((!is.na(dam_i) & dam_i == ped$ID[j]) | (!is.na(dam_j) & dam_j == ped$ID[i]) |
+                   (!is.na(sire_i) & sire_i == ped$ID[j]) | (!is.na(sire_j) & sire_j == ped$ID[i])) {
+          relatedness_matrix[i, j] <- 0.5 # Parent-offspring
+        } else {
+          relatedness_matrix[i, j] <- 0 # Unrelated
+        }
+        
+        relatedness_matrix[j, i] <- relatedness_matrix[i, j]
+      }
+    }
+  }
+  
+  return(relatedness_matrix)
+}
+
+# Function to ensure positive definiteness
+make_positive_definite <- function(mat, epsilon = 1e-6) {
+  eigvals <- eigen(mat)$values
+  if (all(eigvals > 0)) {
+    return(mat)
+  } else {
+    adjustment <- (epsilon - min(eigvals)) * diag(nrow(mat))
+    return(mat + adjustment)
+  }
+}
+
+# Create relatedness matrix
+cstm_a_m <- as.matrix(calculate_relatedness(pedi_p))
+cstm_a_m <- make_positive_definite(cstm_a_m)
+
+cov_list <- list.files(path = "input_data", 
+                      pattern = "\\.cov$", 
+                      full.names = TRUE)
+# Read in list
+samples <- gsub("_1.CpG.merged.cov.CpG_report.merged_CpG_evidence.cov",
+                "", basename(cov_list))
+
+# Filter targets
+targets <- read.csv("input_data/sample_meta_data.csv")
+samples_corr <- gsub("[0-9]+$", "", samples)
+targets_f <- filter(targets, ID %in% samples_corr)
+
+# Define cores
+param <- MulticoreParam(workers = 60, progressbar = TRUE)
+
+fit_cpg_model <- function(i) {
+  prop_meth <- as.numeric(meth_prop_mat_log[i, ])
+  targets_f$prop_meth <- prop_meth
+  
+  fit <- try(
+    relmatLmer(prop_meth ~ F0_treat + F1_treat + (1|ID) + (1|Dam) + (1|Sire), 
+               data = targets_f, 
+               relmat = list(ID = cstm_a_m)),
+    silent = TRUE
+  )
+  
+  if(inherits(fit, "try-error")) {
+    return(NA)
+  }
+  
+  return(fit)
+}
+
+quiet_fit_cpg_model <- function(i) {
+  suppressMessages(
+    suppressWarnings(
+      fit_cpg_model(i)
+    )
+  )
+}
+
+# Split data into chunks of 20,000 CpGs
+n_cpgs <- nrow(meth_prop_mat_log)
+chunk_size <- 20000
+chunks <- split(1:n_cpgs, ceiling(seq_along(1:n_cpgs)/chunk_size))
+
+# Initialize list to store all results
+all_results <- list()
+
+# Process each chunk sequentially
+for (chunk_idx in seq_along(chunks)) {
+  current_chunk <- chunks[[chunk_idx]]
+  
+  cat("Processing chunk", chunk_idx, "of", length(chunks), 
+      "containing", length(current_chunk), "CpGs...\n")
+  
+  # Run in parallel over current chunk
+  chunk_results <- bplapply(current_chunk, quiet_fit_cpg_model, BPPARAM = param)
+  
+  # Store results
+  all_results[[chunk_idx]] <- chunk_results
+  
+  # Save intermediate results
+  save(all_results, file = paste0("diff_meth_results_chunk_", chunk_idx, ".Rdata"))
+  
+  # Clean up to free memory
+  rm(chunk_results)
+  gc()
+}
+
+# Combine all results
+final_results <- unlist(all_results, recursive = FALSE)
+save(final_results, file = "final_diff_meth_results.Rdata")
+
+```
+
+10 parallel 6-core commands
+
+```{r}
+
+library(tidyverse)
+library(BiocParallel)
+library(lme4qtl)
+library(nadiv)
+library(parallel)  # For mclapply to run chunks in parallel
+
+# Read in data
+load("meth_prop_mat.Rdata")
+
+# Prepare pedigree
+pedi <- read.csv("input_data/pedigree_meta.csv")
+pedi_p <- prepPed(pedi)
+
+# Fix methyl matrix colnames
+colnames(meth_prop_mat) <- gsub("[0-9]+$", "", colnames(meth_prop_mat))
+
+# Relatedness function
+calculate_relatedness <- function(ped) {
+  n <- nrow(ped)
+  relatedness_matrix <- matrix(0, n, n, dimnames = list(ped$ID, ped$ID))
+  
+  for (i in 1:n) {
+    for (j in i:n) {
+      if (i == j) {
+        if (ped$ID[i] %in% ped$Dam | ped$ID[i] %in% ped$Sire) {
+          relatedness_matrix[i, j] <- 1
+        } else {
+          relatedness_matrix[i, j] <- 0.5
+        }
+      } else {
+        dam_i <- ped$Dam[i]; sire_i <- ped$Sire[i]
+        dam_j <- ped$Dam[j]; sire_j <- ped$Sire[j]
+
+        if (!is.na(dam_i) & !is.na(dam_j) & dam_i == dam_j) {
+          if (!is.na(sire_i) & !is.na(sire_j) & sire_i == sire_j) {
+            relatedness_matrix[i, j] <- 0.5
+          } else {
+            relatedness_matrix[i, j] <- 0.25
+          }
+        } else if (!is.na(sire_i) & !is.na(sire_j) & sire_i == sire_j) {
+          relatedness_matrix[i, j] <- 0.25
+        } else if ((!is.na(dam_i) & dam_i == ped$ID[j]) | (!is.na(dam_j) & dam_j == ped$ID[i]) |
+                   (!is.na(sire_i) & sire_i == ped$ID[j]) | (!is.na(sire_j) & sire_j == ped$ID[i])) {
+          relatedness_matrix[i, j] <- 0.5
+        } else {
+          relatedness_matrix[i, j] <- 0
+        }
+        relatedness_matrix[j, i] <- relatedness_matrix[i, j]
+      }
+    }
+  }
+  relatedness_matrix
+}
+
+make_positive_definite <- function(mat, epsilon = 1e-6) {
+  eigvals <- eigen(mat)$values
+  if (all(eigvals > 0)) return(mat)
+  adjustment <- (epsilon - min(eigvals)) * diag(nrow(mat))
+  mat + adjustment
+}
+
+# Create relatedness matrix
+cstm_a_m <- as.matrix(calculate_relatedness(pedi_p))
+cstm_a_m <- make_positive_definite(cstm_a_m)
+
+# Load metadata and match to methyl matrix
+cov_list <- list.files("input_data", pattern = "\\.cov$", full.names = TRUE)
+samples <- gsub("_1.CpG.merged.cov.CpG_report.merged_CpG_evidence.cov", "", basename(cov_list))
+samples_corr <- gsub("[0-9]+$", "", samples)
+targets <- read.csv("input_data/sample_meta_data.csv")
+targets_f <- filter(targets, ID %in% samples_corr)
+
+# Define model
+fit_cpg_model <- function(i) {
+  prop_meth <- as.numeric(meth_prop_mat[i, ])
+  targets_f$prop_meth <- prop_meth
+  
+  fit <- try(
+    relmatLmer(prop_meth ~ F0_treat + F1_treat + (1|ID) + (1|Dam) + (1|Sire), 
+               data = targets_f, 
+               relmat = list(ID = cstm_a_m)),
+    silent = TRUE
+  )
+  if (inherits(fit, "try-error")) return(NA)
+  fit
+}
+
+quiet_fit_cpg_model <- function(i) {
+  suppressMessages(suppressWarnings(fit_cpg_model(i)))
+}
+
+# Split into 10 chunks
+n_cpgs <- nrow(meth_prop_mat)
+chunks <- split(1:n_cpgs, cut(seq_len(n_cpgs), breaks = 10, labels = FALSE))
+
+# Function to process a chunk using 6 cores
+process_chunk <- function(chunk_indices, chunk_id) {
+  cat("Running chunk", chunk_id, "with", length(chunk_indices), "CpGs...\n")
+  param <- MulticoreParam(workers = 6, progressbar = TRUE)
+  res <- bplapply(chunk_indices, quiet_fit_cpg_model, BPPARAM = param)
+  save(res, file = paste0("/hb/home/snbogan/WGBS/CrossPhox_WGBS/01_diff_meth/diff_meth_results_chunk_", chunk_id, ".Rdata"))
+  NULL
+}
+
+# Run 10 chunks in parallel, each using 6 cores internally
+results <- mclapply(seq_along(chunks), function(i) {
+  process_chunk(chunks[[i]], chunk_id = i)
+}, mc.cores = 10)
+
+# Done
+cat("All 10 chunks complete.\n")
+
+```
+
+
+Example wald p-value code
+
+```{r}
+
+# Example: run for CpG 1 and save
+load("relmat_data/diff_meth_results_chunk_1.Rdata")
+
+test_model <- chunk_results[[1]]
+
+# Examine test p-values
+test_coefs <- summary(test_model)$coefficients
+
+# Wald p-values (normal approximation)
+test_wald_p <- 2 * (1 - pnorm(abs(test_coefs[, "t value"])))
+
+# Combine
+test_coefs_with_p <- cbind(test_coefs, "p-value" = test_wald_p)
+print(test_coefs_with_p)
+#                Estimate Std. Error    t value      p-value
+# (Intercept) -12.0033526   1.568069 -7.6548631 1.931788e-14
+# F0_treatU    -3.7110714   1.952299 -1.9008727 5.731869e-02
+# F1_treatU    -0.8683173   1.368617 -0.6344487 5.257880e-01
+
+```
+
+Peak at results of first 20 CpG chunks (10,000 CpGs)
+
+```{r}
+
+# Read in effect stats chunk 1-10
+ch1 <- read.csv("effect_stats_chunk_1.csv")
+ch2 <- read.csv("effect_stats_chunk_2.csv")
+ch20 <- read.csv("effect_stats_chunk_20.csv")
+ch30 <- read.csv("effect_stats_chunk_30.csv")
+ch31 <- read.csv("effect_stats_chunk_31.csv") # Chunk 3 failed, so we'll use 31
+ch4 <- read.csv("effect_stats_chunk_4.csv")
+ch40 <- read.csv("effect_stats_chunk_40.csv")
+ch5 <- read.csv("effect_stats_chunk_5.csv")
+ch50 <- read.csv("effect_stats_chunk_50.csv")
+ch6 <- read.csv("effect_stats_chunk_6.csv")
+ch60 <- read.csv("effect_stats_chunk_60.csv")
+ch7 <- read.csv("effect_stats_chunk_7.csv")
+ch70 <- read.csv("effect_stats_chunk_70.csv")
+ch8 <- read.csv("effect_stats_chunk_8.csv")
+ch80 <- read.csv("effect_stats_chunk_80.csv")
+ch9 <- read.csv("effect_stats_chunk_9.csv")
+ch90 <- read.csv("effect_stats_chunk_90.csv")
+ch10 <- read.csv("effect_stats_chunk_10.csv")
+ch101 <- read.csv("effect_stats_chunk_101.csv")
+
+ch_all <- rbind(ch1, ch2, ch31, ch4, ch5, ch6, ch7, ch8, ch9, ch10, 
+                ch20, ch30, ch40, ch50, ch60, ch70, ch80, ch90, ch101)
+
+# Crude volcano plots
+ggplot(data = ch_all,
+       aes(x = F0_treat_estimate, y = -log2(F0_treat_pval))) +
+  geom_point(size = 0.5, alpha = 0.25) +
+  theme_classic() +
+  labs(title = "Parental treatment",
+       y = "-log2 p-value",
+       x = "Differential methylation (logFC)") +
+  ylim(0,60) +
+  xlim(-8,8)
+
+ggplot(data = ch_all,
+       aes(x = F1_treat_estimate, y = -log2(F1_treat_pval))) +
+  geom_point(size = 0.5, alpha = 0.25) +
+  theme_classic() +
+  labs(title = "Larval treatment",
+       y = "-log2 p-value",
+       x = "Differential methylation (logFC)") +
+  ylim(0,60) +
+  xlim(-8,8)
+
+# Should be able to make the slopes comparable by perorming
+# adjusted_slope = beta * ln(2) * (y + 0.000001)
+# Where y = the mean proportion of CpG meth under non-upwelling
+
+# Volcano plots appear to show two different distributions 
+# Large DM for lowly-methylated CpGs, weak DM for highly-methylated CpGs
+
+# Adjusted p values
+# Filter out < 0.01 fold-change CpGs
+ch_all_F0f <- filter(ch_all, abs(F0_treat_estimate) > .01)
+ch_all_F1f <- filter(ch_all, abs(F1_treat_estimate) > .01)
+
+ch_all_F0f$F0_fdr <- p.adjust(ch_all_F0f$F0_treat_pval, method = "fdr")
+ch_all_F1f$F1_fdr <- p.adjust(ch_all_F1f$F1_treat_pval, method = "fdr")
+
+table(p.adjust(ch_all$F0_treat_pval, method = "fdr") < 0.05) # 918
+table(p.adjust(ch_all$F1_treat_pval, method = "fdr") < 0.05) # 779
+
+filter(ch_all_F0f, F0_fdr < 0.05) # 24/918 of 20,000 CpGs or 4.5% - projecting ~10-418k DM CpGs
+filter(ch_all_F1f, F1_fdr < 0.05) # 94/779 of 20,000 CpGs or 3.9% - projecting ~73-353k DM CpGs
+
+# Sig diff's between F0_treat and F1_treat logFCs?
+library(lme4)
+library(lmerTest)
+
+lme_df <- rbind(data.frame(CpG = ch_all$CpG_ID,
+                           logFC = ch_all$F0_treat_estimate,
+                           effect = "F0_treat"),
+                data.frame(CpG = ch_all$CpG_ID,
+                           logFC = ch_all$F1_treat_estimate,
+                           effect = "F1_treat"))
+
+logFC_lmer <- lmerTest::lmer(abs(logFC) ~ effect + (1|CpG), data = lme_df)
+
+# Parental DM has significantly more logFC by 0.07759
+anova(logFC_lmer, method = "F")
+
+```
+
+
 
